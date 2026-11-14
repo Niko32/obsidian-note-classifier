@@ -29,6 +29,18 @@ export function hasConfiguredTag(source: string, allowed: Set<string>): boolean 
 	return existingTags(frontmatter.tags).some((tag) => names.has(tag.trim().replace(/^#/, '').toLowerCase()));
 }
 
+/** Find eligible batch files before asking for confirmation; read only, no model requests. */
+export async function collectUnclassifiedFiles(app: App, files: TFile[], settings: ClassifierSettings): Promise<TFile[]> {
+	const allowed = new Set(settings.tags.map((tag) => tag.name));
+	const eligible: TFile[] = [];
+	for (const file of files) {
+		if (app.vault.getAbstractFileByPath(file.path) !== file) continue;
+		const source = await app.vault.cachedRead(file);
+		if (!hasConfiguredTag(source, allowed)) eligible.push(file);
+	}
+	return eligible;
+}
+
 /** Classify a note and change only managed tags, keeping unrelated frontmatter tags.
  * Returns null when batch mode skips a note already bearing a configured tag. */
 export async function classifyFile(app: App, file: TFile, settings: ClassifierSettings,

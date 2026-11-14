@@ -5,6 +5,9 @@ import { build } from 'esbuild';
 // Bundle against a small Obsidian API stub so tests exercise the actual plugin modules.
 const mock = {
 	request: null,
+	confirmations: [],
+	notices: [],
+	autoConfirm: false,
 	async requestUrl(options) { return this.request(options); },
 	getFrontMatterInfo(source) {
 		const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(source);
@@ -31,7 +34,44 @@ const plugin = {
 	setup(builder) {
 		builder.onResolve({ filter: /^obsidian$/ }, () => ({ path: 'obsidian', namespace: 'stub' }));
 		builder.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
-			contents: 'export const requestUrl = (...a) => globalThis.__obsidianTest.requestUrl(...a); export const getFrontMatterInfo = (...a) => globalThis.__obsidianTest.getFrontMatterInfo(...a); export const parseYaml = (...a) => globalThis.__obsidianTest.parseYaml(...a); export class PluginSettingTab {} export class ButtonComponent {} export class TextAreaComponent {} export class Notice {} export class Setting {}',
+			contents: `
+				export const requestUrl = (...a) => globalThis.__obsidianTest.requestUrl(...a);
+				export const getFrontMatterInfo = (...a) => globalThis.__obsidianTest.getFrontMatterInfo(...a);
+				export const parseYaml = (...a) => globalThis.__obsidianTest.parseYaml(...a);
+				export class PluginSettingTab {}
+				export class ButtonComponent {}
+				export class TextAreaComponent {}
+				export class Notice {
+					constructor(message) { globalThis.__obsidianTest.notices.push(message); }
+					setMessage() {}
+					hide() {}
+				}
+				export class Modal {
+					constructor() {
+						this.contentEl = {
+							createEl: (_, { text }) => globalThis.__obsidianTest.confirmations.push(text),
+							empty() {},
+						};
+					}
+					setTitle() {}
+					open() { this.onOpen(); }
+					close() { this.onClose(); }
+				}
+				export class Setting {
+					addButton(callback) {
+						const button = {
+							setButtonText(text) { this.text = text; return this; },
+							setCta() { return this; },
+							onClick(fn) {
+								if (this.text === 'Classify all' && globalThis.__obsidianTest.autoConfirm) fn();
+								return this;
+							},
+						};
+						callback(button);
+						return this;
+					}
+				}
+			`,
 		}));
 	},
 };
@@ -40,7 +80,8 @@ async function loadModule(path) {
 	return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString('base64')}`);
 }
 const { createBackend } = await loadModule('src/backends.ts');
-const { buildInput, classifyFile } = await loadModule('src/classifier.ts');
+const { buildInput, classifyFile, collectUnclassifiedFiles } = await loadModule('src/classifier.ts');
+const { ClassificationRunner } = await loadModule('src/commands.ts');
 const { parseTags, normalizeTagDefinitions } = await loadModule('src/settings.ts');
 const defaults = {
 	tags: [{ name: 'work', description: 'Work projects, but not personal tasks' },
@@ -134,6 +175,63 @@ test('classification preserves unmanaged tags and other frontmatter fields', asy
 	await assert.rejects(classifyFile(app, { basename: 'Example' }, defaults,
 		{ classify: async () => ['bad'] }), /outside the configured/);
 	assert.deepEqual(frontmatter.tags, ['personal', 'ideas']);
+});
+
+test('collects only untagged files before confirmation and ignores unrelated tags', async () => {
+	const files = ['tagged', 'unrelated', 'plain'].map((path) => ({ path, basename: path }));
+	const contents = {
+		tagged: '---\ntags: [personal, ideas]\n---\nBody',
+		unrelated: '---\ntags: [personal, travel]\n---\nBody',
+		plain: 'Body',
+	};
+	const reads = [];
+	const app = { vault: {
+		getAbstractFileByPath: (path) => files.find((file) => file.path === path),
+		cachedRead: async (file) => { reads.push(file.path); return contents[file.path]; },
+	} };
+	assert.deepEqual(await collectUnclassifiedFiles(app, files, defaults), [files[1], files[2]]);
+	assert.deepEqual(reads, ['tagged', 'unrelated', 'plain']);
+	assert.deepEqual(await collectUnclassifiedFiles(app, [files[0]], defaults), []);
+});
+
+test('batch confirmation counts only eligible notes, and none eligible needs no confirmation', async () => {
+	const files = ['tagged', 'other-tags', 'plain'].map((path) => ({ path, basename: path }));
+	const contents = {
+		tagged: '---\ntags: work\n---\nBody',
+		'other-tags': '---\ntags: personal\n---\nBody',
+		plain: 'Body',
+	};
+	const reads = [];
+	const writes = [];
+	const app = {
+		vault: {
+			getAbstractFileByPath: (path) => files.find((file) => file.path === path),
+			cachedRead: async (file) => { reads.push(file.path); return contents[file.path]; },
+		},
+		fileManager: { processFrontMatter: async (file, fn) => { writes.push(file.path); fn({ tags: [] }); } },
+	};
+	mock.confirmations = [];
+	mock.notices = [];
+	mock.autoConfirm = true;
+	let requests = 0;
+	mock.request = async () => {
+		assert.match(mock.confirmations[0], /Classify 2 Markdown notes/);
+		assert.deepEqual(reads.slice(0, 3), files.map((file) => file.path));
+		requests++;
+		return reply({ best: { type: 'choice', choice: 'tag_0' } });
+	};
+	const runner = new ClassificationRunner({ app }, () => defaults);
+	await runner.run(files, true);
+	assert.deepEqual(writes, ['other-tags', 'plain']);
+	assert.equal(requests, 2);
+	assert.equal(mock.confirmations.length, 1);
+	assert.ok(mock.notices.includes('Classified 2 notes.'));
+	mock.confirmations = [];
+	mock.notices = [];
+	await runner.run([files[0]], true);
+	assert.deepEqual(mock.confirmations, []);
+	assert.ok(mock.notices.includes('No untagged Markdown files to classify.'));
+	assert.equal(requests, 2);
 });
 
 test('batch skips notes with any configured frontmatter tag without contacting the model or writing', async () => {

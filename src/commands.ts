@@ -1,6 +1,6 @@
 import { Modal, Notice, Plugin, Setting, TFile } from 'obsidian';
 import { createBackend } from './backends';
-import { classifyFile } from './classifier';
+import { classifyFile, collectUnclassifiedFiles } from './classifier';
 import type { ClassifierSettings } from './settings';
 
 /** Runs one classification at a time, including the optional batch confirmation. */
@@ -32,24 +32,37 @@ export class ClassificationRunner {
 		}
 		const settings: ClassifierSettings = { ...current, tags: current.tags.map((tag) => ({ ...tag })) };
 		try {
-			const backend = createBackend(settings);
 			this.busy = true;
-			if (confirmAll && !await confirmBatch(this.plugin, files.length, settings.backend)) return;
-			const progress = new Notice(`Checking 0/${files.length} notes…`, 0);
+			let eligible = files;
+			if (confirmAll) {
+				const scanning = new Notice('Finding notes without configured tags…', 0);
+				try {
+					eligible = await collectUnclassifiedFiles(this.plugin.app, files, settings);
+				} finally {
+					scanning.hide();
+				}
+				if (!eligible.length) {
+					new Notice('No untagged Markdown files to classify.');
+					return;
+				}
+			}
+			const backend = createBackend(settings);
+			if (confirmAll && !await confirmBatch(this.plugin, eligible.length, settings.backend)) return;
+			const progress = new Notice(`Classifying 0/${eligible.length} notes…`, 0);
 			let done = 0;
 			let skipped = 0;
 			let checked = 0;
 			try {
-				for (const file of files) {
+				for (const file of eligible) {
 					// A file may have been deleted during a long batch.
 					if (this.plugin.app.vault.getAbstractFileByPath(file.path) !== file) continue;
 					const result = await classifyFile(this.plugin.app, file, settings, backend, confirmAll);
 					if (result === null) skipped++;
 					else done++;
 					checked++;
-					progress.setMessage(`Checked ${checked}/${files.length} notes…`);
+					progress.setMessage(`Classifying ${checked}/${eligible.length} notes…`);
 				}
-				new Notice(`Classified ${done} ${done === 1 ? 'note' : 'notes'}.${confirmAll ? ` Skipped ${skipped} already tagged.` : ''}`);
+				new Notice(`Classified ${done} ${done === 1 ? 'note' : 'notes'}.${skipped ? ` Skipped ${skipped} no longer eligible.` : ''}`);
 			} catch (error) {
 				new Notice(`Stopped after ${done} notes: ${error instanceof Error ? error.message : String(error)}`, 10000);
 			} finally {
@@ -70,7 +83,7 @@ function confirmBatch(plugin: Plugin, count: number, backend: string): Promise<b
 			onOpen(): void {
 				this.setTitle('Classify all files?');
 				this.contentEl.createEl('p', {
-					text: `Check ${count} Markdown notes and classify those without a configured frontmatter tag using ${backend === 'typesafe' ? 'TypeSafe (sends selected note data to TypeSafe)' : 'Ollama'}. Other tags will not prevent classification.`,
+					text: `Classify ${count} Markdown ${count === 1 ? 'note' : 'notes'} with ${backend === 'typesafe' ? 'TypeSafe (sends selected note data to TypeSafe)' : 'Ollama'}?`,
 				});
 				new Setting(this.contentEl)
 					.addButton((button) => button.setButtonText('Cancel').onClick(() => this.close()))
