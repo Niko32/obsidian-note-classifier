@@ -1,11 +1,16 @@
-import { App, ButtonComponent, Notice, PluginSettingTab, Setting } from 'obsidian';
+import { App, ButtonComponent, Notice, PluginSettingTab, Setting, TextAreaComponent } from 'obsidian';
 import type NoteClassifierPlugin from './main';
 
 export type TagMode = 'one' | 'zero-or-more' | 'one-or-more';
 export type BackendId = 'typesafe' | 'ollama';
 
+export interface TagDefinition {
+	name: string;
+	description: string;
+}
+
 export interface ClassifierSettings {
-	tags: string[];
+	tags: TagDefinition[];
 	mode: TagMode;
 	includeTitle: boolean;
 	includeFrontmatter: boolean;
@@ -37,6 +42,21 @@ export function parseTags(value: string): string[] {
 	return [...new Set(tags.filter(Boolean))];
 }
 
+/** Keep tags from older settings files, which stored only an array of names. */
+export function normalizeTagDefinitions(value: unknown): TagDefinition[] {
+	if (!Array.isArray(value)) return [];
+	const tags: TagDefinition[] = [];
+	for (const entry of value as unknown[]) {
+		const name = typeof entry === 'string' ? entry :
+			entry && typeof entry === 'object' && 'name' in entry ? entry.name : null;
+		if (typeof name !== 'string' || !name.trim() || tags.some((tag) => tag.name === name)) continue;
+		const description = entry && typeof entry === 'object' && 'description' in entry &&
+			typeof entry.description === 'string' ? entry.description : '';
+		tags.push({ name, description });
+	}
+	return tags;
+}
+
 export class ClassifierSettingTab extends PluginSettingTab {
 	constructor(app: App, private plugin: NoteClassifierPlugin) {
 		super(app, plugin);
@@ -49,6 +69,7 @@ export class ClassifierSettingTab extends PluginSettingTab {
 
 		const tagSetting = new Setting(containerEl)
 			.setName('Available tags')
+			.setDesc('Add a tag with Enter or the Add button, then optionally describe when it applies.');
 		tagSetting.controlEl.addClass('note-classifier-tag-control');
 		let input: HTMLInputElement;
 		const addTag = async (): Promise<void> => {
@@ -63,11 +84,11 @@ export class ClassifierSettingTab extends PluginSettingTab {
 				new Notice(error instanceof Error ? error.message : String(error));
 				return;
 			}
-			if (this.plugin.settings.tags.includes(tag)) {
+			if (this.plugin.settings.tags.some((existing) => existing.name === tag)) {
 				new Notice('Tag already added.');
 				return;
 			}
-			this.plugin.settings.tags.push(tag);
+			this.plugin.settings.tags.push({ name: tag, description: '' });
 			input.value = '';
 			renderTags();
 			await this.plugin.saveSettings();
@@ -89,17 +110,25 @@ export class ClassifierSettingTab extends PluginSettingTab {
 			tagList.empty();
 			for (const tag of this.plugin.settings.tags) {
 				const item = tagList.createDiv({ cls: 'note-classifier-tag' });
-				item.createSpan({ text: tag });
+				item.createSpan({ cls: 'note-classifier-tag-name', text: tag.name });
 				const removeButton = new ButtonComponent(item)
 					.setIcon('x')
-					.setTooltip(`Remove ${tag}`)
+					.setTooltip(`Remove ${tag.name}`)
 					.onClick(async () => {
 						this.plugin.settings.tags = this.plugin.settings.tags.filter((existing) => existing !== tag);
 						renderTags();
 						input.focus();
 						await this.plugin.saveSettings();
 					});
-				removeButton.buttonEl.setAttribute('aria-label', `Remove ${tag}`);
+				removeButton.buttonEl.setAttribute('aria-label', `Remove ${tag.name}`);
+				const description = new TextAreaComponent(item)
+					.setPlaceholder('When should this tag apply?')
+					.setValue(tag.description)
+					.onChange(async (value) => {
+						tag.description = value;
+						await this.plugin.saveSettings();
+					});
+				description.inputEl.setAttribute('aria-label', `Description for ${tag.name}`);
 			}
 		};
 		renderTags();

@@ -18,14 +18,26 @@
 }
 
 .note-classifier-tag {
-	display: inline-flex;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
 	align-items: center;
-	gap: 0.3em;
-	max-width: 100%;
-	padding: 0.15em 0.35em 0.15em 0.6em;
+	gap: 0.4em;
+	width: 100%;
+	padding: 0.5em;
 	border-radius: var(--radius-s);
 	background: var(--background-modifier-hover);
 	word-break: break-word;
+}
+
+.note-classifier-tag-name {
+	font-weight: 600;
+}
+
+.note-classifier-tag textarea {
+	grid-column: 1 / -1;
+	width: 100%;
+	min-height: 4em;
+	resize: vertical;
 }
 
 .note-classifier-tag button {

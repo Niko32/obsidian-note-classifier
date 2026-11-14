@@ -1,9 +1,9 @@
 import { requestUrl } from 'obsidian';
-import type { ClassifierSettings, TagMode } from './settings';
+import type { ClassifierSettings, TagDefinition, TagMode } from './settings';
 
 /** A backend takes selected note data and returns only configured tags. */
 export interface ClassificationBackend {
-	classify(input: string, tags: string[], mode: TagMode): Promise<string[]>;
+	classify(input: string, tags: TagDefinition[], mode: TagMode): Promise<string[]>;
 }
 
 type Question = {
@@ -17,10 +17,13 @@ type Answer = { type: string; choice?: unknown; noul?: unknown };
 class SystemOneBackend implements ClassificationBackend {
 	constructor(private url: string, private model: string, private apiKey?: string) {}
 
-	async classify(input: string, tags: string[], mode: TagMode): Promise<string[]> {
+	async classify(input: string, tags: TagDefinition[], mode: TagMode): Promise<string[]> {
 		const questions: Record<string, Question> = {};
 		const criteria: Record<string, string> = {};
-		tags.forEach((tag, index) => { criteria[`tag_${index}`] = tag; });
+		tags.forEach((tag, index) => {
+			criteria[`tag_${index}`] = tag.description.trim() ?
+				`Tag: ${tag.name}. Guidance on when it applies: ${tag.description.trim()}` : tag.name;
+		});
 		if (mode !== 'zero-or-more') {
 			questions.best = {
 				type: 'choice',
@@ -32,10 +35,10 @@ class SystemOneBackend implements ClassificationBackend {
 			tags.forEach((tag, index) => {
 				questions[`match_${index}`] = {
 					type: 'noul',
-					instructions: `Is the note meaningfully about ${JSON.stringify(tag)} and should it receive this tag?`,
+					instructions: `Should this note receive the tag ${JSON.stringify(tag.name)}?${tag.description.trim() ? ` Apply the following guidance: ${tag.description.trim()}` : ''}`,
 					criteria: {
-						true: `The note should be tagged ${tag}.`,
-						false: `The note should not be tagged ${tag}.`,
+						true: `The note should receive the tag ${tag.name}.`,
+						false: `The note should not receive the tag ${tag.name}.`,
 					},
 				};
 			});
@@ -64,7 +67,7 @@ class SystemOneBackend implements ClassificationBackend {
 				!Object.prototype.hasOwnProperty.call(criteria, answer.choice)) {
 				throw new Error('Model did not select a valid tag.');
 			}
-			best = criteria[answer.choice];
+			best = tags[Number(answer.choice.slice(4))]?.name;
 		}
 		if (mode === 'one') return best ? [best] : [];
 
@@ -75,7 +78,7 @@ class SystemOneBackend implements ClassificationBackend {
 				!Number.isFinite(answer.noul) || answer.noul < 0 || answer.noul > 1) {
 				throw new Error('Model did not return valid tag decisions.');
 			}
-			if (answer.noul >= 0.5) selected.push(tags[index]!);
+			if (answer.noul >= 0.5) selected.push(tags[index]!.name);
 		}
 		// The choice guarantees at least one tag even when all yes/no scores are low.
 		if (mode === 'one-or-more' && selected.length === 0 && best) selected.push(best);

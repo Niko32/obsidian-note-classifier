@@ -17,7 +17,7 @@ const plugin = {
 	setup(builder) {
 		builder.onResolve({ filter: /^obsidian$/ }, () => ({ path: 'obsidian', namespace: 'stub' }));
 		builder.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
-			contents: 'export const requestUrl = (...a) => globalThis.__obsidianTest.requestUrl(...a); export const getFrontMatterInfo = (...a) => globalThis.__obsidianTest.getFrontMatterInfo(...a); export class PluginSettingTab {} export class ButtonComponent {} export class Notice {} export class Setting {}',
+			contents: 'export const requestUrl = (...a) => globalThis.__obsidianTest.requestUrl(...a); export const getFrontMatterInfo = (...a) => globalThis.__obsidianTest.getFrontMatterInfo(...a); export class PluginSettingTab {} export class ButtonComponent {} export class TextAreaComponent {} export class Notice {} export class Setting {}',
 		}));
 	},
 };
@@ -27,9 +27,10 @@ async function loadModule(path) {
 }
 const { createBackend } = await loadModule('src/backends.ts');
 const { buildInput, classifyFile } = await loadModule('src/classifier.ts');
-const { parseTags } = await loadModule('src/settings.ts');
+const { parseTags, normalizeTagDefinitions } = await loadModule('src/settings.ts');
 const defaults = {
-	tags: ['work', 'ideas'], mode: 'one', includeTitle: true, includeFrontmatter: false,
+	tags: [{ name: 'work', description: 'Work projects, but not personal tasks' },
+		{ name: 'ideas', description: '' }], mode: 'one', includeTitle: true, includeFrontmatter: false,
 	includeContent: true, backend: 'ollama', ollamaModel: 'tev1', ollamaUrl: 'http://localhost:11434',
 	typesafeApiKey: '',
 };
@@ -42,6 +43,15 @@ test('tag input trims prefixes, rejects invalid tags, and avoids duplicates', ()
 	assert.deepEqual(parseTags('#work'), ['work']);
 	assert.deepEqual(parseTags('work\nideas\nwork'), ['work', 'ideas']);
 	assert.throws(() => parseTags('two words'), /Tags cannot contain spaces/);
+});
+
+test('older saved tag lists retain their names and gain empty descriptions', () => {
+	assert.deepEqual(normalizeTagDefinitions(['work', 'ideas', 'work']), [
+		{ name: 'work', description: '' }, { name: 'ideas', description: '' },
+	]);
+	assert.deepEqual(normalizeTagDefinitions([{ name: 'work', description: 'Professional only' }, 'ideas']), [
+		{ name: 'work', description: 'Professional only' }, { name: 'ideas', description: '' },
+	]);
 });
 
 test('selected input only, with and without frontmatter', () => {
@@ -59,7 +69,10 @@ test('exactly one: choice request and validated selection', async () => {
 		assert.equal(options.url, 'http://localhost:11434/v1/systemone');
 		const body = JSON.parse(options.body);
 		assert.deepEqual(Object.keys(body.questions), ['best']);
-		assert.deepEqual(body.questions.best.criteria, { tag_0: 'work', tag_1: 'ideas' });
+		assert.deepEqual(body.questions.best.criteria, {
+			tag_0: 'Tag: work. Guidance on when it applies: Work projects, but not personal tasks',
+			tag_1: 'ideas',
+		});
 		return reply({ best: { type: 'choice', choice: 'tag_1' } });
 	};
 	assert.deepEqual(await backend.classify('note', defaults.tags, 'one'), ['ideas']);
@@ -72,6 +85,8 @@ test('zero or more uses independent yes/no answers; one or more falls back to ch
 	mock.request = async (options) => {
 		const body = JSON.parse(options.body);
 		assert.deepEqual(Object.keys(body.questions), ['match_0', 'match_1']);
+		assert.match(body.questions.match_0.instructions, /Work projects, but not personal tasks/);
+		assert.doesNotMatch(body.questions.match_1.instructions, /Work projects/);
 		return reply({ match_0: { type: 'noul', noul: 0.2 }, match_1: { type: 'noul', noul: 0.5 } });
 	};
 	assert.deepEqual(await backend.classify('note', defaults.tags, 'zero-or-more'), ['ideas']);
@@ -87,6 +102,7 @@ test('TypeSafe authentication and errors never write tags', async () => {
 	mock.request = async (options) => {
 		assert.equal(options.headers.Authorization, 'Bearer secret');
 		assert.equal(options.url, 'https://api.typesafe.ai/v1/systemone');
+		assert.match(JSON.parse(options.body).questions.best.criteria.tag_0, /Work projects, but not personal tasks/);
 		return { status: 401 };
 	};
 	await assert.rejects(backend.classify('note', defaults.tags, 'one'), /HTTP 401/);

@@ -1,12 +1,13 @@
 import { Notice, Plugin } from 'obsidian';
 import { ClassificationRunner } from './commands';
-import { ClassifierSettingTab, ClassifierSettings, DEFAULT_SETTINGS } from './settings';
+import { ClassifierSettingTab, ClassifierSettings, DEFAULT_SETTINGS, normalizeTagDefinitions } from './settings';
 
 export default class NoteClassifierPlugin extends Plugin {
 	settings!: ClassifierSettings;
 
 	async onload(): Promise<void> {
-		this.settings = { ...DEFAULT_SETTINGS, ...await this.loadData() as Partial<ClassifierSettings> };
+		const saved = await this.loadData() as Partial<ClassifierSettings> | null;
+		this.settings = { ...DEFAULT_SETTINGS, ...saved, tags: normalizeTagDefinitions(saved?.tags) };
 		this.addSettingTab(new ClassifierSettingTab(this.app, this));
 		const runner = new ClassificationRunner(this, () => this.settings);
 		this.addCommand({

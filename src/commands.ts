@@ -30,7 +30,7 @@ export class ClassificationRunner {
 			new Notice('No Markdown files to classify.');
 			return;
 		}
-		const settings: ClassifierSettings = { ...current, tags: [...current.tags] };
+		const settings: ClassifierSettings = { ...current, tags: current.tags.map((tag) => ({ ...tag })) };
 		try {
 			const backend = createBackend(settings);
 			this.busy = true;

@@ -5,7 +5,7 @@ Classify Markdown notes into a fixed list of tags using a decision model. The pl
 ## Setup
 
 1. Install and enable the plugin in **Settings → Community plugins**.
-2. Open **Settings → Note Classifier**. Enter a tag and press **Enter** or select **Add** to save it. Repeat for as many tags as you need; select a tag's × button to remove it. A leading `#` is optional.
+2. Open **Settings → Note Classifier**. Enter a tag and press **Enter** or select **Add** to save it. Repeat for as many tags as you need; select a tag's × button to remove it. A leading `#` is optional. Each saved tag has an optional description field: describe when the tag should or should not apply. Descriptions guide the model but are not written to note frontmatter.
 3. Choose a **Tag combination**:
    - **Exactly one**: select the single best tag.
    - **Zero or more**: independently decide whether to assign each tag (a probability of at least 0.5 means yes).
@@ -19,7 +19,7 @@ Run **Classify current file** on an open Markdown note or **Classify all files**
 
 ## Privacy and costs
 
-Ollama uses a local server by default and needs no cloud connection. If you change the Ollama URL to a remote server, selected note data is sent there. TypeSafe sends only the selected note parts and tag names to TypeSafe when you run a classification command; TypeSafe may charge for requests. There is no telemetry. The TypeSafe API key is stored **unencrypted** in Obsidian plugin data (`data.json`); keep your vault configuration private. Only Markdown notes are modified. No note data is sent until you execute a command and (for batch classification) confirm it.
+Ollama uses a local server by default and needs no cloud connection. If you change the Ollama URL to a remote server, selected note data, tag names, and tag descriptions are sent there. TypeSafe sends only the selected note parts, tag names, and tag descriptions to TypeSafe when you run a classification command; TypeSafe may charge for requests. There is no telemetry. The TypeSafe API key is stored **unencrypted** in Obsidian plugin data (`data.json`); keep your vault configuration private. Only Markdown notes are modified. No note data is sent until you execute a command and (for batch classification) confirm it.
 
 ## Development
 

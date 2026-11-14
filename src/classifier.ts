@@ -26,7 +26,7 @@ export async function classifyFile(app: App, file: TFile, settings: ClassifierSe
 	const input = buildInput(file, source, settings);
 	if (!input.trim()) throw new Error(`No selected input available for ${file.path}.`);
 	const selected = await backend.classify(input, settings.tags, settings.mode);
-	const allowed = new Set(settings.tags);
+	const allowed = new Set(settings.tags.map((tag) => tag.name));
 	if (selected.some((tag) => !allowed.has(tag)) ||
 		(settings.mode === 'one' && selected.length !== 1) ||
 		(settings.mode === 'one-or-more' && selected.length === 0)) {
