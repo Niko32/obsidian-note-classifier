@@ -1,6 +1,6 @@
 # Note Classifier
 
-Classify Markdown notes into a fixed list of tags using a decision model. The plugin writes the result to YAML frontmatter (`tags`) and leaves unrelated frontmatter fields and tags alone. Existing tags **from the configured list** are replaced on each classification; tags outside the list are preserved. No classification runs automatically: use a command to start it.
+Classify Markdown notes into a fixed list of tags using a decision model. The plugin writes the result to YAML frontmatter (`tags`) and leaves unrelated frontmatter fields and tags alone. Existing tags **from the configured list** are replaced on each classification; tags outside the list are preserved. If a note has exactly one configured tag, its replacement keeps the same position among the frontmatter tags. No classification runs automatically: use a command to start it.
 
 ## Setup
 

@@ -171,10 +171,42 @@ test('classification preserves unmanaged tags and other frontmatter fields', asy
 	};
 	const backend = { classify: async () => ['ideas'] };
 	assert.deepEqual(await classifyFile(app, { basename: 'Example' }, defaults, backend), ['ideas']);
-	assert.deepEqual(frontmatter, { tags: ['personal', 'ideas'], aliases: ['test'] });
+	assert.deepEqual(frontmatter, { tags: ['ideas', 'personal'], aliases: ['test'] });
 	await assert.rejects(classifyFile(app, { basename: 'Example' }, defaults,
 		{ classify: async () => ['bad'] }), /outside the configured/);
-	assert.deepEqual(frontmatter.tags, ['personal', 'ideas']);
+	assert.deepEqual(frontmatter.tags, ['ideas', 'personal']);
+});
+
+test('replaces the only configured tag at its original frontmatter position', async () => {
+	for (const { previous, expected } of [
+		{ previous: ['work', 'personal', 'travel'], expected: ['ideas', 'personal', 'travel'] },
+		{ previous: ['personal', '#WORK', 'travel'], expected: ['personal', 'ideas', 'travel'] },
+		{ previous: ['personal', 'travel', 'work'], expected: ['personal', 'travel', 'ideas'] },
+	]) {
+		const frontmatter = { tags: [...previous] };
+		const app = {
+			vault: { cachedRead: async () => '---\ntags: [work, personal, travel]\n---\nBody' },
+			fileManager: { processFrontMatter: async (_file, fn) => fn(frontmatter) },
+		};
+		await classifyFile(app, { basename: 'Example' }, defaults, { classify: async () => ['ideas'] });
+		assert.deepEqual(frontmatter.tags, expected);
+	}
+});
+
+test('multiple or zero replacements use the old tag slot when one managed tag exists', async () => {
+	for (const { selected, expected } of [
+		{ selected: ['ideas', 'work'], expected: ['personal', 'ideas', 'work', 'travel'] },
+		{ selected: [], expected: ['personal', 'travel'] },
+	]) {
+		const frontmatter = { tags: ['personal', 'work', 'travel'] };
+		const app = {
+			vault: { cachedRead: async () => '---\ntags: [personal, work, travel]\n---\nBody' },
+			fileManager: { processFrontMatter: async (_file, fn) => fn(frontmatter) },
+		};
+		await classifyFile(app, { basename: 'Example' }, { ...defaults, mode: 'zero-or-more' },
+			{ classify: async () => selected });
+		assert.deepEqual(frontmatter.tags, expected);
+	}
 });
 
 test('collects only untagged files before confirmation and ignores unrelated tags', async () => {
@@ -267,7 +299,7 @@ test('batch classifies notes with only unrelated tags, while current file reclas
 	};
 	assert.deepEqual(await classifyFile(app, { basename: 'Example' }, defaults,
 		{ classify: async () => ['ideas'] }), ['ideas']);
-	assert.deepEqual(frontmatter.tags, ['personal', 'ideas']);
+	assert.deepEqual(frontmatter.tags, ['ideas', 'personal']);
 });
 
 test('zero tags do not create empty frontmatter on a plain note', async () => {

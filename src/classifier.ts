@@ -59,9 +59,16 @@ export async function classifyFile(app: App, file: TFile, settings: ClassifierSe
 	// Zero tags on a note without frontmatter needs no write or empty YAML block.
 	if (!selected.length && !getFrontMatterInfo(source).exists) return selected;
 	await app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
-		const otherTags = existingTags(frontmatter.tags).filter((tag) =>
-			!allowed.has(tag.replace(/^#/, '')));
-		const updated = [...new Set([...otherTags, ...selected])];
+		const previous = existingTags(frontmatter.tags);
+		const names = new Set([...allowed].map((tag) => tag.toLowerCase()));
+		const isManaged = (tag: string): boolean => names.has(tag.trim().replace(/^#/, '').toLowerCase());
+		const positions = previous.flatMap((tag, index) => isManaged(tag) ? [index] : []);
+		// A single old managed tag is replaced in place, keeping surrounding tags in order.
+		const position = positions.length === 1 ? positions[0]! : -1;
+		const replacement = position >= 0
+			? [...previous.slice(0, position), ...selected, ...previous.slice(position + 1)]
+			: [...previous.filter((tag) => !isManaged(tag)), ...selected];
+		const updated = [...new Set(replacement)];
 		if (updated.length) frontmatter.tags = updated;
 		else delete frontmatter.tags;
 	});
