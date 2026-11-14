@@ -1,33 +1,30 @@
 # Note Classifier
 
-Classify Markdown notes into a fixed list of tags using a decision model. The plugin writes the result to YAML frontmatter (`tags`) and leaves unrelated frontmatter fields and tags alone. Existing tags **from the configured list** are replaced on each classification; tags outside the list are preserved. If a note has exactly one configured tag, its replacement keeps the same position among the frontmatter tags. No classification runs automatically: use a command to start it.
+Quickly tag one or all of your notes with a predefined list of possible tags. Fast and efficient decisions models make it possible to run this classification locally on consumer hardware using ollama. For large-scale classification, consider using [https://typesafe.ai](Jev). Tags are written to frontmatter (`tags`) leaving other tags untouched.
 
 ## Setup
 
 1. Install and enable the plugin in **Settings → Community plugins**.
-2. Open **Settings → Note Classifier**. Enter a tag and press **Enter** or select **Add** to save it. Repeat for as many tags as you need; select a tag's × button to remove it. A leading `#` is optional. Each saved tag has an optional description field: describe when the tag should or should not apply. Descriptions guide the model but are not written to note frontmatter.
-3. Choose a **Tag combination**:
-   - **Exactly one**: select the single best tag.
-   - **Zero or more**: independently decide whether to assign each tag (a probability of at least 0.5 means yes).
-   - **One or more**: independently decide each tag; if none qualify, use the single best tag.
-4. Select which parts of each note the model receives: **File title** (basename without `.md`), **File frontmatter** (raw YAML, including any existing tags), and/or **File content** (body after frontmatter). At least one must be enabled. Large notes are sent in full; model context limits may cause a request to fail.
+2. Open **Settings → Note Classifier**. Enter one or more tags. A leading `#` is optional. Each saved tag has an optional description field: describe when the tag should or should not apply.
+3. Choose a **Tag combination** policy:
+   - **Exactly one**: write exactly one tag per file.
+   - **Zero or more**: write zero or any number of tags per file.
+   - **One or more**: write any number of tags per file.
+4. Select which parts of each note the model receives: **File title**, **File frontmatter**, and/or **File content**. At least one must be enabled. Model context limits may cause a large file request to fail.
 5. Choose a backend:
    - **Ollama (local)**: install [Ollama](https://ollama.com), run `ollama pull tev1`, and ensure the server is running at `http://localhost:11434`. The model name and base URL can be changed. Only decision models compatible with Ollama's `/v1/systemone` endpoint work; ordinary chat models do not.
    - **TypeSafe (Jev)**: get an API key at [TypeSafe](https://console.typesafe.ai/keys) and enter it in the settings. Uses `jev-latest` via `https://api.typesafe.ai/v1/systemone`.
 
-Run **Classify current file** on an open Markdown note to classify it again, even if it already has a configured tag. Run **Classify all files** to classify Markdown files that do not yet have any of the configured tags in their frontmatter. Unrelated frontmatter tags do not cause a file to be skipped and are preserved. Before asking for confirmation, the batch command checks the vault locally and shows only the number of eligible files. If none are eligible, it shows a notice instead. It then proceeds sequentially and stops at the first error; already processed files remain changed. A file tagged while the confirmation is open is skipped when processing begins. Check model output and back up important files before a large batch.
+## Commands
+
+- `Classify current file`: classify the currently opened note. This can overwrite existing auto generated tags
+- `Classify all files` classify all Markdown files that do not yet have any of the configured tags in their frontmatter. Consider making a backup of your files beforehand.
 
 ## Privacy and costs
 
-Ollama uses a local server by default and needs no cloud connection. If you change the Ollama URL to a remote server, selected note data, tag names, and tag descriptions are sent there. TypeSafe sends only the selected note parts, tag names, and tag descriptions to TypeSafe when you run a classification command; TypeSafe may charge for requests. There is no telemetry. The TypeSafe API key is stored **unencrypted** in Obsidian plugin data (`data.json`); keep your vault configuration private. Only Markdown notes are modified. No note data is sent until you execute a command and (for batch classification) confirm it.
+Only the selected note parts, tag names, and tag descriptions are sent to TypeSafe when you run a classification command. The TypeSafe API key is stored **unencrypted** in Obsidian plugin data (`data.json`); keep your vault configuration private. Only Markdown notes are modified. No note data is sent until you execute a command.
 
-## Development
+## Similar Projects
 
-```sh
-npm ci
-npm run build
-npm run lint
-npm test
-```
-
-Obsidian 1.5.7 or later is required. `main.js` is generated by the build and should not be committed.
+- https://github.com/goberomsu/obsidian-metadata-auto-classifier
+- https://github.com/HyeonseoNam/auto-classifier uses classical 
