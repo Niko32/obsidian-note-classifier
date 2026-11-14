@@ -5,7 +5,7 @@ Classify Markdown notes into a fixed list of tags using a decision model. The pl
 ## Setup
 
 1. Install and enable the plugin in **Settings → Community plugins**.
-2. Open **Settings → Note Classifier** and enter available tags (one per line or comma-separated; `#` prefixes are optional).
+2. Open **Settings → Note Classifier**. Enter a tag and press **Enter** or select **Add** to save it. Repeat for as many tags as you need; select a tag's × button to remove it. A leading `#` is optional.
 3. Choose a **Tag combination**:
    - **Exactly one**: select the single best tag.
    - **Zero or more**: independently decide whether to assign each tag (a probability of at least 0.5 means yes).

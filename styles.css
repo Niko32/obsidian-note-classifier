@@ -1,8 +1,38 @@
-/*
+.note-classifier-tag-control {
+	flex-wrap: wrap;
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.note-classifier-tag-control input {
+	min-width: 10em;
+}
 
-If your plugin does not need CSS, delete this file.
+.note-classifier-tag-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4em;
+	width: 100%;
+}
 
-*/
+.note-classifier-tag-list:empty {
+	display: none;
+}
+
+.note-classifier-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3em;
+	max-width: 100%;
+	padding: 0.15em 0.35em 0.15em 0.6em;
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-hover);
+	word-break: break-word;
+}
+
+.note-classifier-tag button {
+	width: 1.5em;
+	height: 1.5em;
+	padding: 0;
+	border: 0;
+	box-shadow: none;
+	background: transparent;
+}

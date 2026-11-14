@@ -17,7 +17,7 @@ const plugin = {
 	setup(builder) {
 		builder.onResolve({ filter: /^obsidian$/ }, () => ({ path: 'obsidian', namespace: 'stub' }));
 		builder.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
-			contents: 'export const requestUrl = (...a) => globalThis.__obsidianTest.requestUrl(...a); export const getFrontMatterInfo = (...a) => globalThis.__obsidianTest.getFrontMatterInfo(...a);',
+			contents: 'export const requestUrl = (...a) => globalThis.__obsidianTest.requestUrl(...a); export const getFrontMatterInfo = (...a) => globalThis.__obsidianTest.getFrontMatterInfo(...a); export class PluginSettingTab {} export class ButtonComponent {} export class Notice {} export class Setting {}',
 		}));
 	},
 };
@@ -27,6 +27,7 @@ async function loadModule(path) {
 }
 const { createBackend } = await loadModule('src/backends.ts');
 const { buildInput, classifyFile } = await loadModule('src/classifier.ts');
+const { parseTags } = await loadModule('src/settings.ts');
 const defaults = {
 	tags: ['work', 'ideas'], mode: 'one', includeTitle: true, includeFrontmatter: false,
 	includeContent: true, backend: 'ollama', ollamaModel: 'tev1', ollamaUrl: 'http://localhost:11434',
@@ -36,6 +37,12 @@ const defaults = {
 function reply(answers) {
 	return { status: 200, json: { answers } };
 }
+
+test('tag input trims prefixes, rejects invalid tags, and avoids duplicates', () => {
+	assert.deepEqual(parseTags('#work'), ['work']);
+	assert.deepEqual(parseTags('work\nideas\nwork'), ['work', 'ideas']);
+	assert.throws(() => parseTags('two words'), /Tags cannot contain spaces/);
+});
 
 test('selected input only, with and without frontmatter', () => {
 	const file = { basename: 'Example' };

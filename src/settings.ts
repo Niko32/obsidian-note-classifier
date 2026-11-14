@@ -1,4 +1,4 @@
-import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
+import { App, ButtonComponent, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type NoteClassifierPlugin from './main';
 
 export type TagMode = 'one' | 'zero-or-more' | 'one-or-more';
@@ -47,20 +47,62 @@ export class ClassifierSettingTab extends PluginSettingTab {
 		containerEl.empty();
 		new Setting(containerEl).setName('Tags').setHeading();
 
-		new Setting(containerEl)
+		const tagSetting = new Setting(containerEl)
 			.setName('Available tags')
-			.setDesc('Enter one tag per line (or separate tags with commas). These are the only tags the model can assign.')
-			.addTextArea((text) => text
-				.setPlaceholder('Projects\nreading\nideas')
-				.setValue(this.plugin.settings.tags.join('\n'))
-				.onChange(async (value) => {
-					try {
-						this.plugin.settings.tags = parseTags(value);
+		tagSetting.controlEl.addClass('note-classifier-tag-control');
+		let input: HTMLInputElement;
+		const addTag = async (): Promise<void> => {
+			const value = input.value.trim();
+			if (!value) return;
+			let tag: string;
+			try {
+				const parsed = parseTags(value);
+				if (parsed.length !== 1) throw new Error('Enter one tag at a time.');
+				tag = parsed[0]!;
+			} catch (error) {
+				new Notice(error instanceof Error ? error.message : String(error));
+				return;
+			}
+			if (this.plugin.settings.tags.includes(tag)) {
+				new Notice('Tag already added.');
+				return;
+			}
+			this.plugin.settings.tags.push(tag);
+			input.value = '';
+			renderTags();
+			await this.plugin.saveSettings();
+			input.focus();
+		};
+		tagSetting.addText((text) => {
+			input = text.inputEl;
+			text.setPlaceholder('Add a tag');
+			input.addEventListener('keydown', (event) => {
+				if (event.key === 'Enter' && !event.isComposing) {
+					event.preventDefault();
+					void addTag();
+				}
+			});
+		});
+		tagSetting.addButton((button) => button.setButtonText('Add').onClick(() => { void addTag(); }));
+		const tagList = tagSetting.controlEl.createDiv({ cls: 'note-classifier-tag-list' });
+		const renderTags = (): void => {
+			tagList.empty();
+			for (const tag of this.plugin.settings.tags) {
+				const item = tagList.createDiv({ cls: 'note-classifier-tag' });
+				item.createSpan({ text: tag });
+				const removeButton = new ButtonComponent(item)
+					.setIcon('x')
+					.setTooltip(`Remove ${tag}`)
+					.onClick(async () => {
+						this.plugin.settings.tags = this.plugin.settings.tags.filter((existing) => existing !== tag);
+						renderTags();
+						input.focus();
 						await this.plugin.saveSettings();
-					} catch (error) {
-						new Notice(String(error));
-					}
-				}));
+					});
+				removeButton.buttonEl.setAttribute('aria-label', `Remove ${tag}`);
+			}
+		};
+		renderTags();
 
 		new Setting(containerEl)
 			.setName('Tag combination')
