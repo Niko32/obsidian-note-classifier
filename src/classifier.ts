@@ -1,4 +1,4 @@
-import { App, getFrontMatterInfo, TFile } from 'obsidian';
+import { App, getFrontMatterInfo, parseYaml, TFile } from 'obsidian';
 import type { ClassificationBackend } from './backends';
 import type { ClassifierSettings } from './settings';
 
@@ -19,14 +19,26 @@ function existingTags(value: unknown): string[] {
 	return [];
 }
 
-/** Classify a note and change only managed tags, keeping unrelated frontmatter tags. */
+/** Only frontmatter tags from the configured list make a note ineligible for batch classification. */
+export function hasConfiguredTag(source: string, allowed: Set<string>): boolean {
+	const info = getFrontMatterInfo(source);
+	if (!info.exists) return false;
+	const frontmatter: unknown = parseYaml(source.slice(info.from, info.to));
+	if (!frontmatter || typeof frontmatter !== 'object' || !('tags' in frontmatter)) return false;
+	const names = new Set([...allowed].map((tag) => tag.toLowerCase()));
+	return existingTags(frontmatter.tags).some((tag) => names.has(tag.trim().replace(/^#/, '').toLowerCase()));
+}
+
+/** Classify a note and change only managed tags, keeping unrelated frontmatter tags.
+ * Returns null when batch mode skips a note already bearing a configured tag. */
 export async function classifyFile(app: App, file: TFile, settings: ClassifierSettings,
-	backend: ClassificationBackend): Promise<string[]> {
+	backend: ClassificationBackend, skipIfTagged = false): Promise<string[] | null> {
 	const source = await app.vault.cachedRead(file);
+	const allowed = new Set(settings.tags.map((tag) => tag.name));
+	if (skipIfTagged && hasConfiguredTag(source, allowed)) return null;
 	const input = buildInput(file, source, settings);
 	if (!input.trim()) throw new Error(`No selected input available for ${file.path}.`);
 	const selected = await backend.classify(input, settings.tags, settings.mode);
-	const allowed = new Set(settings.tags.map((tag) => tag.name));
 	if (selected.some((tag) => !allowed.has(tag)) ||
 		(settings.mode === 'one' && selected.length !== 1) ||
 		(settings.mode === 'one-or-more' && selected.length === 0)) {

@@ -35,17 +35,21 @@ export class ClassificationRunner {
 			const backend = createBackend(settings);
 			this.busy = true;
 			if (confirmAll && !await confirmBatch(this.plugin, files.length, settings.backend)) return;
-			const progress = new Notice(`Classifying 0/${files.length} notes…`, 0);
+			const progress = new Notice(`Checking 0/${files.length} notes…`, 0);
 			let done = 0;
+			let skipped = 0;
+			let checked = 0;
 			try {
 				for (const file of files) {
 					// A file may have been deleted during a long batch.
 					if (this.plugin.app.vault.getAbstractFileByPath(file.path) !== file) continue;
-					await classifyFile(this.plugin.app, file, settings, backend);
-					done++;
-					progress.setMessage(`Classifying ${done}/${files.length} notes…`);
+					const result = await classifyFile(this.plugin.app, file, settings, backend, confirmAll);
+					if (result === null) skipped++;
+					else done++;
+					checked++;
+					progress.setMessage(`Checked ${checked}/${files.length} notes…`);
 				}
-				new Notice(`Classified ${done} ${done === 1 ? 'note' : 'notes'}.`);
+				new Notice(`Classified ${done} ${done === 1 ? 'note' : 'notes'}.${confirmAll ? ` Skipped ${skipped} already tagged.` : ''}`);
 			} catch (error) {
 				new Notice(`Stopped after ${done} notes: ${error instanceof Error ? error.message : String(error)}`, 10000);
 			} finally {
@@ -66,7 +70,7 @@ function confirmBatch(plugin: Plugin, count: number, backend: string): Promise<b
 			onOpen(): void {
 				this.setTitle('Classify all files?');
 				this.contentEl.createEl('p', {
-					text: `Classify ${count} Markdown notes with ${backend === 'typesafe' ? 'TypeSafe (sends selected note data to TypeSafe)' : 'Ollama'}. Existing managed tags will be replaced.`,
+					text: `Check ${count} Markdown notes and classify those without a configured frontmatter tag using ${backend === 'typesafe' ? 'TypeSafe (sends selected note data to TypeSafe)' : 'Ollama'}. Other tags will not prevent classification.`,
 				});
 				new Setting(this.contentEl)
 					.addButton((button) => button.setButtonText('Cancel').onClick(() => this.close()))

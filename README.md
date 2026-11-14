@@ -15,7 +15,7 @@ Classify Markdown notes into a fixed list of tags using a decision model. The pl
    - **Ollama (local)**: install [Ollama](https://ollama.com), run `ollama pull tev1`, and ensure the server is running at `http://localhost:11434`. The model name and base URL can be changed. Only decision models compatible with Ollama's `/v1/systemone` endpoint work; ordinary chat models do not.
    - **TypeSafe (Jev)**: get an API key at [TypeSafe](https://console.typesafe.ai/keys) and enter it in the settings. Uses `jev-latest` via `https://api.typesafe.ai/v1/systemone`.
 
-Run **Classify current file** on an open Markdown note or **Classify all files** to classify every Markdown file in the vault. The batch command asks for confirmation, proceeds sequentially, and stops at the first error; already processed files remain changed. Check model output and back up important files before a large batch.
+Run **Classify current file** on an open Markdown note to classify it again, even if it already has a configured tag. Run **Classify all files** to classify Markdown files that do not yet have any of the configured tags in their frontmatter. Unrelated frontmatter tags do not cause a file to be skipped and are preserved. The batch command asks for confirmation, proceeds sequentially, and stops at the first error; already processed files remain changed. Check model output and back up important files before a large batch.
 
 ## Privacy and costs
 

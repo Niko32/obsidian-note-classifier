@@ -8,7 +8,21 @@ const mock = {
 	async requestUrl(options) { return this.request(options); },
 	getFrontMatterInfo(source) {
 		const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(source);
-		return { exists: !!match, frontmatter: match?.[1] ?? '', contentStart: match?.[0].length ?? 0 };
+		return {
+			exists: !!match, frontmatter: match?.[1] ?? '', contentStart: match?.[0].length ?? 0,
+			from: match ? source.indexOf('\n') + 1 : 0,
+			to: match ? match[0].lastIndexOf('---') : 0,
+		};
+	},
+	parseYaml(yaml) {
+		// Test double for the frontmatter tag forms used below.
+		const match = /^tags:[ \t]*(.*)$/m.exec(yaml);
+		if (!match) return {};
+		const value = match[1].trim();
+		if (value.startsWith('[')) return { tags: value.slice(1, -1).split(',').map((tag) => tag.trim()) };
+		if (value) return { tags: value.replace(/^["']|["']$/g, '') };
+		const lines = yaml.slice(match.index + match[0].length).split('\n');
+		return { tags: lines.filter((line) => /^\s+- /.test(line)).map((line) => line.replace(/^\s+- /, '')) };
 	},
 };
 globalThis.__obsidianTest = mock;
@@ -17,7 +31,7 @@ const plugin = {
 	setup(builder) {
 		builder.onResolve({ filter: /^obsidian$/ }, () => ({ path: 'obsidian', namespace: 'stub' }));
 		builder.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
-			contents: 'export const requestUrl = (...a) => globalThis.__obsidianTest.requestUrl(...a); export const getFrontMatterInfo = (...a) => globalThis.__obsidianTest.getFrontMatterInfo(...a); export class PluginSettingTab {} export class ButtonComponent {} export class TextAreaComponent {} export class Notice {} export class Setting {}',
+			contents: 'export const requestUrl = (...a) => globalThis.__obsidianTest.requestUrl(...a); export const getFrontMatterInfo = (...a) => globalThis.__obsidianTest.getFrontMatterInfo(...a); export const parseYaml = (...a) => globalThis.__obsidianTest.parseYaml(...a); export class PluginSettingTab {} export class ButtonComponent {} export class TextAreaComponent {} export class Notice {} export class Setting {}',
 		}));
 	},
 };
@@ -119,6 +133,42 @@ test('classification preserves unmanaged tags and other frontmatter fields', asy
 	assert.deepEqual(frontmatter, { tags: ['personal', 'ideas'], aliases: ['test'] });
 	await assert.rejects(classifyFile(app, { basename: 'Example' }, defaults,
 		{ classify: async () => ['bad'] }), /outside the configured/);
+	assert.deepEqual(frontmatter.tags, ['personal', 'ideas']);
+});
+
+test('batch skips notes with any configured frontmatter tag without contacting the model or writing', async () => {
+	for (const tags of ['tags: work', 'tags: [personal, ideas]', 'tags:\n  - personal\n  - #WORK']) {
+		let reads = 0;
+		const app = {
+			vault: { cachedRead: async () => { reads++; return `---\n${tags}\n---\nBody`; } },
+			fileManager: { processFrontMatter: () => { throw new Error('unexpected write'); } },
+		};
+		const result = await classifyFile(app, { basename: 'Example' }, defaults,
+			{ classify: async () => { throw new Error('unexpected model call'); } }, true);
+		assert.equal(result, null);
+		assert.equal(reads, 1);
+	}
+});
+
+test('batch classifies notes with only unrelated tags, while current file reclassifies tagged notes', async () => {
+	for (const source of ['---\ntags: [personal, travel]\n---\nBody', '---\ntags: personal\n---\nBody', 'Body']) {
+		let calls = 0;
+		const app = {
+			vault: { cachedRead: async () => source },
+			fileManager: { processFrontMatter: async (_file, fn) => fn({ tags: ['personal'] }) },
+		};
+		const result = await classifyFile(app, { basename: 'Example' }, defaults,
+			{ classify: async () => { calls++; return ['ideas']; } }, true);
+		assert.deepEqual(result, ['ideas']);
+		assert.equal(calls, 1);
+	}
+	const frontmatter = { tags: ['work', 'personal'] };
+	const app = {
+		vault: { cachedRead: async () => '---\ntags: [work, personal]\n---\nBody' },
+		fileManager: { processFrontMatter: async (_file, fn) => fn(frontmatter) },
+	};
+	assert.deepEqual(await classifyFile(app, { basename: 'Example' }, defaults,
+		{ classify: async () => ['ideas'] }), ['ideas']);
 	assert.deepEqual(frontmatter.tags, ['personal', 'ideas']);
 });
 
